@@ -35,13 +35,13 @@ from modelnet10_cached_dataset import make_cached_dataloaders, CachedModelNet10D
 
 # ── Constants (module level — must be readable by workers) ────────────────────
 CACHE_ROOT   = "./ModelNet10_cache"
-BATCH_SIZE   = 32
+BATCH_SIZE   = 64
 NUM_WORKERS  = 8
 DEVICE       = "cuda" if torch.cuda.is_available() else "cpu"
 VOXEL_SIZE   = 32
 IN_CHANNELS  = 4
-NUM_EPOCHS   = 50
-LR           = 1e-3
+NUM_EPOCHS   = 4
+LR           = 1e-4
 LR_STEP      = 20
 LR_GAMMA     = 0.5
 WEIGHT_DECAY = 1e-4
@@ -203,8 +203,8 @@ if __name__ == "__main__":
     # Use BCEWithLogitsLoss (safe for autocast) with positive weight 2.0
     pos_weight_tensor = torch.tensor([2.0]).to(DEVICE)
     criterion         = nn.BCEWithLogitsLoss(pos_weight=pos_weight_tensor)
-    optimizer         = optim.Adam(_model_for_ckpt.parameters(), lr=LR, weight_decay=WEIGHT_DECAY)
-    scheduler         = StepLR(optimizer, step_size=LR_STEP, gamma=LR_GAMMA)
+    optimizer         = optim.Adam(_model_for_ckpt.parameters(), lr=LR)#, weight_decay=WEIGHT_DECAY)
+    #scheduler         = StepLR(optimizer, step_size=LR_STEP, gamma=LR_GAMMA)
     _amp_enabled      = (DEVICE == "cuda")
     scaler            = torch.amp.GradScaler("cuda", enabled=_amp_enabled)
     print(f"AMP              : {'enabled' if _amp_enabled else 'disabled'}\n")
@@ -247,13 +247,13 @@ if __name__ == "__main__":
                 val_iou  += voxel_iou(refined_logits, voxels)
         val_loss /= len(test_loader)
         val_iou  /= len(test_loader)
-        scheduler.step()
+        #scheduler.step()
 
         print(
             f"Epoch {epoch:03d}/{NUM_EPOCHS}  "
             f"train loss={train_loss:.4f}  IoU={train_iou:.4f}  |  "
             f"val loss={val_loss:.4f}  IoU={val_iou:.4f}  "
-            f"[{time.time()-t0:.1f}s]  lr={scheduler.get_last_lr()[0]:.2e}"
+            #f"[{time.time()-t0:.1f}s]  lr={scheduler.get_last_lr()[0]:.2e}"
         )
         history["train_loss"].append(train_loss)
         history["train_iou"].append(train_iou)
