@@ -49,7 +49,7 @@ from __future__ import annotations
 import glob
 import warnings
 from pathlib import Path
-from typing import Dict, List, Optional, Tuple
+from typing import Dict, List, Optional, Tuple, cast
 
 import numpy as np
 import torch
@@ -59,7 +59,6 @@ import trimesh
 # ── optional PyTorch3D import ──────────────────────────────────────────────────
 try:
     import pytorch3d                                        # noqa: F401
-    from pytorch3d.structures import Meshes
     from pytorch3d.renderer import (
         FoVPerspectiveCameras,
         MeshRasterizer,
@@ -325,7 +324,12 @@ def voxelize(mesh: trimesh.Trimesh, resolution: int = VOXEL_RES) -> np.ndarray:
     grid : (R, R, R) float32  {0, 1}
     """
     pitch    = 2.0 / resolution
-    vox      = mesh.voxelized(pitch=pitch).fill()
+    # mesh.voxelized(...) may return None for degenerate / empty meshes
+    vox_obj = mesh.voxelized(pitch=pitch)
+    if vox_obj is None:
+        return np.zeros((resolution, resolution, resolution), dtype=np.float32)
+    # ensure a filled occupancy grid
+    vox = vox_obj.fill()
     grid     = np.zeros((resolution, resolution, resolution), dtype=np.float32)
     indices  = np.argwhere(vox.matrix)
     if len(indices) == 0:
@@ -457,7 +461,13 @@ class ModelNet10RGBDDataset(Dataset):
         path, label     = self._samples[mesh_idx]
 
         # 1. Load & normalise mesh
-        mesh = normalize_mesh(trimesh.load(path, force="mesh"))
+        loaded = trimesh.load(path, force="mesh", process=False)
+        # trimesh.load may return a Trimesh or a Scene (Geometry). Ensure Trimesh.
+        if isinstance(loaded, trimesh.Scene):
+            mesh = cast(trimesh.Trimesh, loaded.dump(concatenate=True))
+        else:
+            mesh = cast(trimesh.Trimesh, loaded)
+        mesh = normalize_mesh(mesh)
 
         # 2. Render ONE view  →  (H,W,3) float32,  (H,W) float32
         rgb_np, depth_np = render_single_view(
@@ -546,7 +556,7 @@ if __name__ == "__main__":
 
     if p.suffix == ".off":
         print(f"\n=== Single-file smoke test: {p} ===\n")
-        mesh = normalize_mesh(trimesh.load(str(p), force="mesh"))
+        mesh = normalize_mesh(cast(trimesh.Trimesh, trimesh.load(str(p), force="mesh")))
         eyes = camera_positions()
 
         import tracemalloc
